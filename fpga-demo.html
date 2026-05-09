@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FPGA + AI Background Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+      overflow-x: hidden;
+      background: #05080f;
+      color: white;
+    }
+
+    #canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: -1;
+      background: linear-gradient(to bottom, #05080f 0%, #0a0e15 50%, #050810 100%);
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 4rem);
+      font-weight: 700;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #00d4ff 0%, #00ff88 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    p {
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      color: rgba(255, 255, 255, 0.7);
+      max-width: 600px;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+
+    /* Developer Profile Panel - System Node Integration */
+    .dev-panel {
+      position: fixed;
+      top: 3rem;
+      left: 3rem;
+      width: 420px;
+      background: linear-gradient(135deg, rgba(0, 15, 30, 0.85) 0%, rgba(0, 8, 20, 0.9) 100%);
+      backdrop-filter: blur(20px) saturate(180%);
+      padding: 0;
+      border-radius: 12px;
+      border: 1.5px solid rgba(0, 255, 198, 0.3);
+      box-shadow:
+        0 0 30px rgba(0, 255, 198, 0.2),
+        0 8px 32px rgba(0, 0, 0, 0.6),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      font-size: 0.875rem;
+      z-index: 10;
+      transform: perspective(1000px) rotateX(-2deg) rotateY(5deg);
+      transform-style: preserve-3d;
+      transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+      overflow: hidden;
+      animation: panelPulse 3s ease-in-out infinite;
+    }
+
+    @keyframes panelPulse {
+      0%, 100% { box-shadow: 0 0 30px rgba(0, 255, 198, 0.2), 0 8px 32px rgba(0, 0, 0, 0.6); }
+      50% { box-shadow: 0 0 40px rgba(0, 255, 198, 0.4), 0 8px 32px rgba(0, 0, 0, 0.6); }
+    }
+
+    .dev-panel::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 255, 198, 0.03) 2px,
+          rgba(0, 255, 198, 0.03) 4px
+        ),
+        radial-gradient(circle at 20% 30%, rgba(0, 100, 255, 0.1) 0%, transparent 50%);
+      pointer-events: none;
+      animation: scanlines 8s linear infinite;
+    }
+
+    @keyframes scanlines {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(20px); }
+    }
+
+    .dev-panel::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        url('data:image/svg+xml,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><defs><pattern id="hexagons" x="0" y="0" width="50" height="43.4" patternUnits="userSpaceOnUse"><path d="M25 0 L50 12.5 L50 37.5 L25 50 L0 37.5 L0 12.5 Z" fill="none" stroke="rgba(0,255,198,0.05)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23hexagons)"/></svg>');
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    .panel-header {
+      position: relative;
+      padding: 1.25rem 1.5rem 0.75rem;
+      border-bottom: 1px solid rgba(0, 255, 198, 0.2);
+      background: linear-gradient(to right, rgba(0, 255, 198, 0.05), transparent);
+    }
+
+    .panel-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: #00FFC6;
+      margin-bottom: 0.25rem;
+      text-shadow: 0 0 10px rgba(0, 255, 198, 0.5);
+      font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+    }
+
+    .panel-title::after {
+      content: '_';
+      animation: blink 1s step-start infinite;
+      color: #00FFC6;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 0.5rem;
+    }
+
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #00ff66;
+      box-shadow: 0 0 10px rgba(0, 255, 102, 0.8);
+      animation: statusBlink 2s ease-in-out infinite;
+    }
+
+    @keyframes statusBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .panel-content {
+      padding: 1.25rem 1.5rem;
+    }
+
+    .system-modules {
+      margin-bottom: 1.25rem;
+    }
+
+    .module-category {
+      margin-bottom: 1rem;
+    }
+
+    .module-category:last-child {
+      margin-bottom: 0;
+    }
+
+    .module-label {
+      font-size: 0.7rem;
+      color: rgba(0, 255, 198, 0.8);
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .module-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .chip {
+      padding: 0.35rem 0.75rem;
+      background: linear-gradient(135deg, rgba(0, 255, 198, 0.1), rgba(0, 150, 255, 0.1));
+      border: 1px solid rgba(0, 255, 198, 0.3);
+      border-radius: 4px;
+      font-size: 0.7rem;
+      color: rgba(255, 255, 255, 0.9);
+      font-family: 'SF Mono', monospace;
+      box-shadow: 0 2px 8px rgba(0, 255, 198, 0.2);
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .chip::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      animation: chipShimmer 3s linear infinite;
+    }
+
+    @keyframes chipShimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    .chip:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 255, 198, 0.4);
+      border-color: rgba(0, 255, 198, 0.6);
+    }
+
+    .metrics {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(0, 255, 198, 0.15);
+    }
+
+    .metric-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .metric-label {
+      color: rgba(0, 255, 198, 0.8);
+    }
+
+    .metric-value {
+      color: #00ff66;
+      font-weight: 600;
+      text-shadow: 0 0 5px rgba(0, 255, 102, 0.5);
+    }
+
+    /* Data Connection Lines */
+    .connection-line {
+      position: fixed;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .stats {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.75rem;
+      font-family: monospace;
+      z-index: 10;
+    }
+
+    @media (max-width: 768px) {
+      .dev-panel {
+        width: calc(100vw - 2rem);
+        left: 1rem;
+        top: 1rem;
+        transform: perspective(1000px) rotateX(0deg) rotateY(0deg);
+      }
+
+      .panel-title {
+        font-size: 1.2rem;
+      }
+
+      .module-chips {
+        gap: 0.4rem;
+      }
+
+      .chip {
+        font-size: 0.65rem;
+        padding: 0.3rem 0.6rem;
+      }
+
+      .stats {
+        font-size: 0.75rem;
+        padding: 0.75rem 1rem;
+        bottom: 1rem;
+        right: 1rem;
+      }
+
+      .content {
+        padding-top: 280px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <!-- Developer Profile Panel - System Node -->
+  <div class="dev-panel" id="devPanel">
+    <div class="panel-header">
+      <div class="panel-title">TUSSHAR LINGAGIRI</div>
+      <div class="status-line">
+        <div class="status-indicator"></div>
+        <span>SYSTEM ONLINE</span>
+      </div>
+    </div>
+
+    <div class="panel-content">
+      <div class="system-modules">
+        <div class="module-category">
+          <div class="module-label">FPGA HARDWARE</div>
+          <div class="module-chips">
+            <div class="chip">RTL</div>
+            <div class="chip">TIMING</div>
+            <div class="chip">VIVADO</div>
+          </div>
+        </div>
+
+        <div class="module-category">
+          <div class="module-label">LOW LATENCY</div>
+          <div class="module-chips">
+            <div class="chip">C++</div>
+            <div class="chip">LOCK-FREE</div>
+            <div class="chip">KERNEL</div>
+          </div>
+        </div>
+
+        <div class="module-category">
+          <div class="module-label">AI/ML</div>
+          <div class="module-chips">
+            <div class="chip">PYTORCH</div>
+            <div class="chip">RL</div>
+            <div class="chip">TIME SERIES</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric-item">
+          <span class="metric-label">LATENCY OPTIMIZATION:</span>
+          <span class="metric-value">ACTIVE</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">INFERENCE PIPELINE:</span>
+          <span class="metric-value">CONNECTED</span>
+        </div>
+        <div class="metric-item">
+          <span class="metric-label">CONFIG STREAM:</span>
+          <span class="metric-value" id="configStream">SYNCED</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data connection lines canvas -->
+  <canvas id="connectionCanvas" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 5; pointer-events: none;"></canvas>
+
+  <div class="stats">
+    <div>FPS: <span id="fps">60</span></div>
+    <div>Packets: <span id="packets">0</span></div>
+    <div>Nodes: <span id="nodes">0</span></div>
+  </div>
+
+  <div class="content">
+    <h1>FPGA + AI Animation</h1>
+    <p>
+      A production-ready background animation representing the fusion of
+      FPGA hardware architecture and AI neural networks. Optimized for
+      60fps with 3D layered particles, pulse waves, and data flow visualization.
+    </p>
+  </div>
+
+  <script>
+    // FPGA + AI Background Animation
+    // Production-ready, optimized implementation
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', {
+      alpha: true,
+      desynchronized: true,
+    });
+
+    let mouse = { x: 0, y: 0 };
+    let prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // FPS counter
+    let frameCount = 0;
+    let lastFpsUpdate = Date.now();
+    setInterval(() => {
+      const now = Date.now();
+      const fps = Math.round((frameCount * 1000) / (now - lastFpsUpdate));
+      document.getElementById('fps').textContent = fps;
+      frameCount = 0;
+      lastFpsUpdate = now;
+    }, 1000);
+
+    // Responsive canvas
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+      ctx.scale(dpr, dpr);
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Mouse tracking with panel parallax
+    const devPanel = document.getElementById('devPanel');
+    window.addEventListener('mousemove', (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = (e.clientY / window.innerHeight) * 2 - 1;
+
+      // Apply parallax to dev panel
+      const parallaxStrength = 5;
+      const rotateX = -mouse.y * 2;
+      const rotateY = mouse.x * 5;
+      const translateX = mouse.x * parallaxStrength;
+      const translateY = mouse.y * parallaxStrength;
+
+      devPanel.style.transform = `
+        perspective(1000px)
+        rotateX(${-2 + rotateX}deg)
+        rotateY(${5 + rotateY}deg)
+        translate(${translateX}px, ${translateY}px)
+      `;
+    });
+
+    // FPGA Grid Setup
+    const gridSpacing = 120;
+    const cols = Math.ceil(window.innerWidth / gridSpacing) + 1;
+    const rows = Math.ceil(window.innerHeight / gridSpacing) + 1;
+
+    const nodes = [];
+    const nodeMap = new Map();
+
+    // Create nodes
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const x = col * gridSpacing;
+        const y = row * gridSpacing;
+        const z = (row / rows + col / cols) / 2;
+
+        let type = 'CLB';
+        if (row === 0 || row === rows - 1 || col === 0 || col === cols - 1) {
+          type = 'IO';
+        } else if (col % 5 === 2 && row % 3 === 1) {
+          type = 'DSP';
+        } else if (col % 6 === 4 && row % 4 === 2) {
+          type = 'BRAM';
+        }
+
+        const nodeIndex = nodes.length;
+        nodeMap.set(`${col},${row}`, nodeIndex);
+
+        nodes.push({
+          x, y, z, type,
+          active: Math.random(),
+          pulsePhase: Math.random() * Math.PI * 2,
+          baseSize: type === 'IO' ? 4 : type === 'DSP' ? 6 : type === 'BRAM' ? 5 : 4,
+          connections: [],
+        });
+      }
+    }
+
+    // Create connections
+    nodes.forEach((node, idx) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+
+      [[col + 1, row], [col, row + 1], [col + 1, row + 1], [col - 1, row + 1]].forEach(([c, r]) => {
+        const key = `${c},${r}`;
+        const targetIdx = nodeMap.get(key);
+        if (targetIdx !== undefined && !node.connections.includes(targetIdx)) {
+          node.connections.push(targetIdx);
+        }
+      });
+    });
+
+    document.getElementById('nodes').textContent = nodes.length;
+
+    // Animation state
+    const dataPackets = [];
+    const pulseWaves = [];
+    let frame = 0;
+
+    function spawnDataPacket() {
+      if (dataPackets.length > 40) return;
+
+      const fromNode = Math.floor(Math.random() * nodes.length);
+      const node = nodes[fromNode];
+      if (node.connections.length === 0) return;
+
+      const toNode = node.connections[Math.floor(Math.random() * node.connections.length)];
+
+      dataPackets.push({
+        fromNode, toNode,
+        progress: 0,
+        speed: 0.01 + Math.random() * 0.015,
+        layer: node.z,
+        hue: node.type === 'DSP' ? 280 : node.type === 'BRAM' ? 200 : 180,
+      });
+    }
+
+    function spawnPulseWave() {
+      if (pulseWaves.length > 3) return;
+
+      const node = nodes[Math.floor(Math.random() * nodes.length)];
+      pulseWaves.push({
+        x: node.x,
+        y: node.y,
+        radius: 0,
+        maxRadius: 200 + Math.random() * 200,
+        alpha: 0.6,
+      });
+    }
+
+    function getNodeColor(node, active, customAlpha) {
+      const alpha = customAlpha !== undefined ? customAlpha : 0.3 + active * 0.5;
+      const colorMap = {
+        IO: [200, 80, 50],
+        DSP: [280, 70, 50],
+        BRAM: [260, 75, 50],
+        CLB: [170, 75, 40],
+      };
+      const [h, s, l] = colorMap[node.type];
+      return `hsla(${h}, ${s}%, ${l + active * 30}%, ${alpha})`;
+    }
+
+    // Main animation loop
+    let lastFrameTime = 0;
+    const targetFPS = 60;
+    const frameInterval = 1000 / targetFPS;
+
+    function animate(currentTime) {
+      const elapsed = currentTime - lastFrameTime;
+      if (elapsed < frameInterval) {
+        requestAnimationFrame(animate);
+        return;
+      }
+      lastFrameTime = currentTime - (elapsed % frameInterval);
+
+      frame++;
+      frameCount++;
+
+      const animationSpeed = prefersReducedMotion ? 0.3 : 1;
+
+      // Clear with fade
+      ctx.fillStyle = 'rgba(5, 8, 15, 0.15)';
+      ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+      const parallaxX = mouse.x * 10;
+      const parallaxY = mouse.y * 10;
+
+      // Draw connections
+      ctx.strokeStyle = 'rgba(30, 60, 80, 0.15)';
+      ctx.lineWidth = 1;
+      nodes.forEach((node) => {
+        node.connections.forEach((targetIdx) => {
+          const target = nodes[targetIdx];
+          const scale = 0.7 + node.z * 0.3;
+          ctx.beginPath();
+          ctx.moveTo(node.x + parallaxX * node.z * scale, node.y + parallaxY * node.z * scale);
+          ctx.lineTo(target.x + parallaxX * target.z * scale, target.y + parallaxY * target.z * scale);
+          ctx.stroke();
+        });
+      });
+
+      // Draw pulse waves
+      pulseWaves.forEach((wave, idx) => {
+        wave.radius += 2 * animationSpeed;
+        wave.alpha -= 0.01 * animationSpeed;
+
+        if (wave.alpha <= 0 || wave.radius > wave.maxRadius) {
+          pulseWaves.splice(idx, 1);
+          return;
+        }
+
+        ctx.strokeStyle = `hsla(180, 100%, 60%, ${wave.alpha * 0.4})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(wave.x + parallaxX * 0.5, wave.y + parallaxY * 0.5, wave.radius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Inner glow
+        const gradient = ctx.createRadialGradient(
+          wave.x + parallaxX * 0.5,
+          wave.y + parallaxY * 0.5,
+          Math.max(0, wave.radius - 10),
+          wave.x + parallaxX * 0.5,
+          wave.y + parallaxY * 0.5,
+          wave.radius + 10
+        );
+        gradient.addColorStop(0, `hsla(180, 100%, 70%, 0)`);
+        gradient.addColorStop(0.5, `hsla(180, 100%, 70%, ${wave.alpha * 0.3})`);
+        gradient.addColorStop(1, `hsla(180, 100%, 70%, 0)`);
+
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      });
+
+      // Draw data packets
+      document.getElementById('packets').textContent = dataPackets.length;
+
+      dataPackets.forEach((packet, idx) => {
+        packet.progress += packet.speed * animationSpeed;
+
+        if (packet.progress >= 1) {
+          dataPackets.splice(idx, 1);
+          return;
+        }
+
+        const fromNode = nodes[packet.fromNode];
+        const toNode = nodes[packet.toNode];
+        const scale = 0.7 + packet.layer * 0.3;
+
+        const x1 = fromNode.x + parallaxX * packet.layer * scale;
+        const y1 = fromNode.y + parallaxY * packet.layer * scale;
+        const x2 = toNode.x + parallaxX * packet.layer * scale;
+        const y2 = toNode.y + parallaxY * packet.layer * scale;
+
+        const x = x1 + (x2 - x1) * packet.progress;
+        const y = y1 + (y2 - y1) * packet.progress;
+
+        // Glow trail
+        for (let i = 0; i < 5; i++) {
+          const trailProgress = Math.max(0, packet.progress - i * 0.05);
+          const tx = x1 + (x2 - x1) * trailProgress;
+          const ty = y1 + (y2 - y1) * trailProgress;
+          const alpha = (1 - i / 5) * 0.3;
+
+          ctx.fillStyle = `hsla(${packet.hue}, 100%, 60%, ${alpha})`;
+          ctx.beginPath();
+          ctx.arc(tx, ty, (5 - i) * 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Main packet
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, 8);
+        gradient.addColorStop(0, `hsla(${packet.hue}, 100%, 80%, 1)`);
+        gradient.addColorStop(0.3, `hsla(${packet.hue}, 100%, 60%, 0.8)`);
+        gradient.addColorStop(1, `hsla(${packet.hue}, 100%, 50%, 0)`);
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        fromNode.active = Math.min(1, fromNode.active + 0.1);
+        toNode.active = Math.min(1, toNode.active + 0.1);
+      });
+
+      // Draw nodes
+      nodes.forEach((node) => {
+        node.pulsePhase += 0.02 * animationSpeed;
+        const pulse = (Math.sin(node.pulsePhase) + 1) / 2;
+        node.active = Math.max(0, node.active - 0.01);
+
+        const active = node.active * 0.6 + pulse * 0.4;
+        const scale = 0.7 + node.z * 0.3;
+        const x = node.x + parallaxX * node.z * scale;
+        const y = node.y + parallaxY * node.z * scale;
+        const size = node.baseSize * scale * (0.9 + active * 0.3);
+
+        // Glow
+        if (active > 0.5) {
+          const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, size * 4);
+          glowGradient.addColorStop(0, getNodeColor(node, active, 0.3));
+          glowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          ctx.fillStyle = glowGradient;
+          ctx.beginPath();
+          ctx.arc(x, y, size * 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Node
+        ctx.fillStyle = getNodeColor(node, active);
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Special indicators
+        if (node.type === 'DSP' || node.type === 'BRAM') {
+          ctx.strokeStyle = getNodeColor(node, 1);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(x, y, size + 2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      });
+
+      // Spawn new elements
+      if (!prefersReducedMotion) {
+        if (frame % 10 === 0) spawnDataPacket();
+        if (frame % 200 === 0) spawnPulseWave();
+      } else {
+        if (frame % 30 === 0) spawnDataPacket();
+      }
+
+      // Draw connection lines (defined after this function)
+      if (typeof drawConnectionLines === 'function') {
+        drawConnectionLines();
+      }
+
+      requestAnimationFrame(animate);
+    }
+
+    // ===== DATA CONNECTION LINES SYSTEM =====
+    const connectionCanvas = document.getElementById('connectionCanvas');
+    const connCtx = connectionCanvas.getContext('2d', { alpha: true });
+
+    function resizeConnectionCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      connectionCanvas.width = window.innerWidth * dpr;
+      connectionCanvas.height = window.innerHeight * dpr;
+      connectionCanvas.style.width = `${window.innerWidth}px`;
+      connectionCanvas.style.height = `${window.innerHeight}px`;
+      connCtx.scale(dpr, dpr);
+    }
+    resizeConnectionCanvas();
+    window.addEventListener('resize', resizeConnectionCanvas);
+
+    // Connection data
+    const connections = [
+      { targetNode: 15, label: 'CONFIG STREAM', hue: 170 },
+      { targetNode: 42, label: 'CONTROL BUS', hue: 200 },
+      { targetNode: 28, label: 'DATA FEED', hue: 180 }
+    ];
+
+    const dataFlows = connections.map((conn, idx) => ({
+      ...conn,
+      progress: idx * 0.33, // Stagger start positions
+      speed: 0.008 + Math.random() * 0.004,
+      particles: []
+    }));
+
+    // Initialize particles for each flow
+    dataFlows.forEach(flow => {
+      for (let i = 0; i < 5; i++) {
+        flow.particles.push({
+          offset: i * 0.2,
+          size: 2 + Math.random() * 2
+        });
+      }
+    });
+
+    function drawConnectionLines() {
+      connCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+      // Get panel position (anchor point for connections)
+      const panelRect = devPanel.getBoundingClientRect();
+      const panelX = panelRect.right - 20;
+      const panelY = panelRect.top + panelRect.height / 2;
+
+      dataFlows.forEach((flow, flowIdx) => {
+        const targetNode = nodes[flow.targetNode];
+        if (!targetNode) return;
+
+        const scale = 0.7 + targetNode.z * 0.3;
+        const parallaxX = mouse.x * 10;
+        const parallaxY = mouse.y * 10;
+
+        const targetX = targetNode.x + parallaxX * targetNode.z * scale;
+        const targetY = targetNode.y + parallaxY * targetNode.z * scale;
+
+        // Draw connection line
+        const gradient = connCtx.createLinearGradient(panelX, panelY, targetX, targetY);
+        gradient.addColorStop(0, `hsla(${flow.hue}, 100%, 60%, 0.3)`);
+        gradient.addColorStop(0.5, `hsla(${flow.hue}, 100%, 60%, 0.15)`);
+        gradient.addColorStop(1, `hsla(${flow.hue}, 100%, 60%, 0.3)`);
+
+        connCtx.strokeStyle = gradient;
+        connCtx.lineWidth = 1.5;
+        connCtx.setLineDash([5, 5]);
+        connCtx.lineDashOffset = -frame * 0.5;
+        connCtx.beginPath();
+        connCtx.moveTo(panelX, panelY);
+
+        // Curved line using quadratic curve
+        const midX = (panelX + targetX) / 2;
+        const midY = (panelY + targetY) / 2 - 50;
+        connCtx.quadraticCurveTo(midX, midY, targetX, targetY);
+        connCtx.stroke();
+        connCtx.setLineDash([]);
+
+        // Animate data flow along the curve
+        flow.progress += flow.speed;
+        if (flow.progress > 1) flow.progress = 0;
+
+        flow.particles.forEach(particle => {
+          const t = (flow.progress + particle.offset) % 1;
+
+          // Calculate position on quadratic curve
+          const x = Math.pow(1 - t, 2) * panelX +
+                    2 * (1 - t) * t * midX +
+                    Math.pow(t, 2) * targetX;
+          const y = Math.pow(1 - t, 2) * panelY +
+                    2 * (1 - t) * t * midY +
+                    Math.pow(t, 2) * targetY;
+
+          // Draw glowing particle
+          const particleGradient = connCtx.createRadialGradient(x, y, 0, x, y, particle.size * 3);
+          particleGradient.addColorStop(0, `hsla(${flow.hue}, 100%, 80%, 0.9)`);
+          particleGradient.addColorStop(0.4, `hsla(${flow.hue}, 100%, 60%, 0.6)`);
+          particleGradient.addColorStop(1, `hsla(${flow.hue}, 100%, 50%, 0)`);
+
+          connCtx.fillStyle = particleGradient;
+          connCtx.beginPath();
+          connCtx.arc(x, y, particle.size * 3, 0, Math.PI * 2);
+          connCtx.fill();
+
+          // Core bright dot
+          connCtx.fillStyle = `hsla(${flow.hue}, 100%, 90%, 1)`;
+          connCtx.beginPath();
+          connCtx.arc(x, y, particle.size, 0, Math.PI * 2);
+          connCtx.fill();
+        });
+
+        // Label on the line (only visible when data is flowing near midpoint)
+        if (flow.progress > 0.4 && flow.progress < 0.6) {
+          const labelAlpha = 1 - Math.abs(0.5 - flow.progress) * 4;
+          connCtx.fillStyle = `hsla(${flow.hue}, 100%, 80%, ${labelAlpha * 0.7})`;
+          connCtx.font = '9px "SF Mono", monospace';
+          connCtx.fillText(flow.label, midX - 30, midY - 10);
+        }
+
+        // Activate target node when data arrives
+        if (flow.progress > 0.9) {
+          targetNode.active = 1;
+        }
+      });
+    }
+
+    // Update config stream status indicator
+    setInterval(() => {
+      const statuses = ['SYNCED', 'ACTIVE', 'FLOW'];
+      const configStreamEl = document.getElementById('configStream');
+      const currentIdx = statuses.indexOf(configStreamEl.textContent);
+      configStreamEl.textContent = statuses[(currentIdx + 1) % statuses.length];
+    }, 2000);
+
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
